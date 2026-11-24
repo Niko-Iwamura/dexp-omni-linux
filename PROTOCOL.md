@@ -220,7 +220,8 @@ writing it back inside a 01…02 session. The default config
 
 ### 5.2 Custom mode (per-key lighting)
 
-Custom per-key lighting uses **palette indices**, not raw RGB:
+**On 0C45:1007 (the template-derived path)** custom per-key lighting uses
+**palette indices**, not raw RGB:
 
 1. Upload the 13-colour palette with the `FF 22/44 AA…AF` reports (§1.1).
 2. Upload the per-LED palette-index table with **cmd 0x12** — one byte per LED,
@@ -229,6 +230,49 @@ Custom per-key lighting uses **palette indices**, not raw RGB:
 3. Set the settings record to mode 17 (Customize) + `CustomGroup` 0–2 and commit.
 
 The app keeps three custom groups (`light_combo_custommodeSelect`, userdata 0–2).
+
+### 5.2b Custom mode on 320F:505B — raw RGB, no palette (verified in write)
+
+Confirmed on hardware (Nov 2026), both from a read-only dump and from a
+verified write/restore cycle:
+
+* Custom per-key colour is a **raw RGB triple per slot**, not a palette index.
+  The three custom groups are **384-byte pages** (128 slots × 3 bytes, slot
+  order `col*8 + row`, same as the cmd 07 key-ID table) living in the
+  settings-NVRAM address space at
+
+  ```
+  group 0/1/2  ->  0x6C0 / 0x8C0 / 0xAC0
+  ```
+
+  and reachable from **two** independent address spaces:
+
+  | write | address used | alias |
+  |---|---|---|
+  | cmd **0x06** (settings NVRAM block) | `0x6C0 + group*0x200` | — |
+  | cmd **0x0B** (remap-page write)     | `group * 0x200`         | cmd 0x0A read at `0x000/0x200/0x400` returns the *same bytes* |
+
+  Byte-for-byte cross-check of all three pages through cmd 0x05 @0x6C0/0x8C0/
+  0xAC0 vs cmd 0x0A @0x000/0x200/0x400: **0 mismatches** (23 / 20 / 37 lit slots).
+
+* There is **no 0xFF report ID** on this keyboard (§13), so the §1.1 palette
+  frames and the cmd 0x12 index table do not apply. Consequently `cmd 1B`
+  returns the identity map `00 01 … 7F` (an LED-per-slot map), *not* a
+  palette-index table — do **not** write it with cmd 0x12.
+
+* Per-key colour writing **is supported** on this ID (the README's "disabled"
+  note is wrong): write the 384-byte page inside a `cmd 01 … cmd 02` session,
+  then read it back. Mode byte of the settings record must be **20 = Customize**
+  (`omni_mode_names[20]`), with `CustomGroup` 0–2 selecting which page the
+  keyboard lights.
+
+* Verified sequence (`perkey_write.py`): read page via cmd 0x0A → patch the
+  3 bytes → write via cmd 0x0B *or* cmd 0x06 → commit → read back. Painting
+  D (slot 27) of group 0 `FFFFFF → FF0000` and back verified on both paths;
+  the full page returned byte-identical afterwards. A proof of concept: the
+  retail unit had a hand-painted group 0 (red Esc, coloured F-row, white
+  WASD/arrows, `02 00 B2` PageUp) matching the Windows app's "Customize" /
+  Group 1 screen.
 
 ### 5.3 Palette colour data
 
@@ -367,19 +411,21 @@ UI skin). The frame formats are cross-verified against the shipped
 physical keyboard yet. The Linux app (`omni-gtk`, Protocol console tab,
 `omni-cli raw`) is the workbench for closing them:
 
-1. **Palette transport** — the `FF 22/44 …` frames went out via
-   `HidD_SetOutputReport` (control SET_REPORT) on Windows. Linux
-   `write()` on hidraw uses interrupt-OUT; most firmwares accept both.
-   If the palette upload does nothing, send the frames as a control
-   transfer (e.g. via `usbhid-dump`/libusb) and compare.
+1. ~~**Palette transport**~~ — **resolved for 320F:505B: N/A.** That unit has
+   no 0xFF report ID and no palette at all; per-key colour is raw RGB, see
+   §5.2b. Still open for a genuine 0C45:1007 unit if one surfaces: the
+   `FF 22/44 …` frames went out via `HidD_SetOutputReport` (control
+   SET_REPORT) on Windows, while Linux `write()` on hidraw uses
+   interrupt-OUT.
 2. **Macro event records** — the container layout of cmd 15 is fully
    known, but the 4-byte event bitfields (key / delay encoding) come from
    the UI text parser (0x4BCAD0 → 0x44ECD0) and a stored `.mac` file.
    Decode by writing a macro in the Windows app, dumping the table via
    cmd 05, and correlating.
-3. **Default remap layer index** — the app keeps the active layer at
-   parent+0x1840 (copied from a settings field); try layers 0–3 with
-   cmd 0A and compare against the live bank (cmd 07).
+3. ~~**Default remap layer index**~~ — **resolved for 320F:505B: layers 0–2
+   are not remap layers at all** but the three custom-colour groups
+   (§5.2b); there is no live-bank mirror to compare against. Still open for
+   0C45:1007.
 4. **Direction/FX byte and W flag** — settings record bytes 4 and 13 are
    passed through from the UI (`Fx`, `WFlag`) without obvious consumers;
    observe LED behaviour per mode while sweeping the value.
@@ -442,9 +488,17 @@ byte, P = high byte: `30 E2 00` Mute, `30 E9 00` Vol+, `30 EA 00` Vol-,
 
 **cmd 1B.** Returns the identity map `00 01 02 … 7F` with `FF` at slots 71 and
 79 (the two unused ones) — an LED-per-slot map, **not** the 0-12 palette-index
-table of §5.2/5.3. Writing palette indices with cmd 0x12 would overwrite it;
-custom per-key lighting is therefore disabled in the tools for this ID. How
-per-key colours are really set is unknown.
+table of §5.2/5.3. Do not write it with cmd 0x12.
+
+**Per-key colour — SOLVED.** Custom per-key lighting works on this ID, just not
+the way §5.2 describes: there is no palette and no index table, only a **raw RGB
+triple per slot**. The three custom groups are 384-byte pages at
+`0x6C0/0x8C0/0xAC0` (settings NVRAM, cmd 05/06) and are **the same bytes** as
+the pages `0x000/0x200/0x400` reached with cmd 0A/0B — so "remap layers 0–2"
+on this hardware are actually the UI's Group 1/2/3 colour pages. Verified in a
+write test: group 0 slot 27 (D) set to `FF0000` through **both** cmd 0x0B and
+cmd 0x06, read back through both address spaces, restored to `FFFFFF`, page
+byte-identical. Full layout and the exact frame sequence: **§5.2b**.
 
 **cmd 1A.** Answers status 0xFF (-102) for len 6, offset 0. Win-lock state is
 available as record byte [15] instead (0 here).

@@ -12,3 +12,7 @@ Claude_CODE_TOKEN.txt
 /omni-cli
 /omni-gtk
 *.o
+
+# python bytecode
+__pycache__/
+*.pyc

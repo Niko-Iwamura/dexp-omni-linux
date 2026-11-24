@@ -25,7 +25,11 @@ original skin XML, so it matches the physical keyboard.
 * **Lighting** — all 31 lighting modes, brightness/speed 0–4, colour,
   multi-colour flag, via the 34-byte settings record (cmd 05/06)
 * **Custom per-key lighting** — 13-colour palette upload (report-ID 0xFF
-  frames), per-LED palette-index table (cmd 12/1B), custom groups 0–2
+  frames), per-LED palette-index table (cmd 12/1B), custom groups 0–2.
+  On the retail **320F:505B** there is no palette: each custom group is a
+  384-byte raw-RGB page (128 slots × 3) at `0x6C0/0x8C0/0xAC0`, also
+  aliased by the cmd 0x0B pages `0x000/0x200/0x400`; mode **20 = Customize**.
+  Verified in a write/restore cycle — see PROTOCOL.md §5.2b
 * **System settings** — polling rate 1/2/4/8 ms, 6KRO flag, Windows-key lock
   (settings record + status query cmd 1A), W flag
 * **Macros** — macro table upload in the `0x55AA` container format (cmd 15),
@@ -68,11 +72,15 @@ been checked against a simulated device, not yet against a 320F:505B.
 
 ## Tested hardware
 
-Read-only dump verified on **USB 320F:505B "Evision RGB Keyboard"** (the
-DEXP OMNI as sold today): framing, cmd 03/05/07/1B/0A. Custom per-key
-lighting is **disabled** for this ID (different LED table, no 0xFF palette
-report) — see PROTOCOL.md section 13. Take a read-only snapshot before any
-write (`omni-cli dump`).
+Verified on **USB 320F:505B "Evision RGB Keyboard"** (the DEXP OMNI as sold
+today): framing, cmd 03/05/07/1B/0A, and per-key colour in a verified
+write/restore cycle. Custom per-key lighting **does** work on this ID, but
+differently than the palette path: no 0xFF palette report, no cmd 0x12 index
+table — instead a raw-RGB page per custom group (see PROTOCOL.md §5.2b and
+§13). `omni_supports_custom_light()` still returns 0 for this ID because the
+CLI/GUI palette flow is the 0C45:1007 one; the raw-RGB path is
+`perkey_write.py` for now. Take a read-only snapshot before any write
+(`omni-cli dump`).
 
 ## What is still unverified on hardware
 
