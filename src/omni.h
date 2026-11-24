@@ -269,6 +269,9 @@ int  omni_assignment_parse(const char *text, uint8_t out[3]);
 int omni_build_remap_page(const uint8_t assignment[][3], uint16_t keys,
                           const struct omni_keymap *km,
                           uint8_t page[OMNI_REMAP_PAGE], unsigned quirks);
+int omni_overlay_remap_page(const uint8_t assignment[][3], uint16_t keys,
+                            const struct omni_keymap *km,
+                            uint8_t page[OMNI_REMAP_PAGE], unsigned quirks);
 
 #ifdef __cplusplus
 }

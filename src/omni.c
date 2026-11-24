@@ -943,10 +943,13 @@ int omni_build_keymap(const uint8_t *keyids, uint16_t keycount, struct omni_keym
      * `keycount` keys; use identity for anything still unmatched so a
      * previously-remapped keyboard still produces a usable map. */
     for (slot = 0; slot < keycount && slot < OMNI_KEYREF_COUNT; slot++) {
-        if (km->slot_to_key[slot] == 0xFF) {
+        /* Only fall back to identity when key index `slot` is still free.
+         * Otherwise an unmatched slot (macro M6-M8, consumer-control keys)
+         * would claim the index of a real key that matched elsewhere, and
+         * loading the table would overwrite that key's assignment. */
+        if (km->slot_to_key[slot] == 0xFF && km->key_to_slot[slot] == 0xFF) {
             km->slot_to_key[slot] = (uint8_t)slot;
-            if (km->key_to_slot[slot] == 0xFF)
-                km->key_to_slot[slot] = (uint8_t)slot;
+            km->key_to_slot[slot] = (uint8_t)slot;
         }
     }
     return OMNI_OK;
@@ -956,9 +959,20 @@ int omni_build_remap_page(const uint8_t assignment[][3], uint16_t keys,
                           const struct omni_keymap *km,
                           uint8_t page[OMNI_REMAP_PAGE], unsigned quirks)
 {
-    int key;
     if (!assignment || !km || !page) return OMNI_ERR;
     memset(page, 0, OMNI_REMAP_PAGE);
+    return omni_overlay_remap_page(assignment, keys, km, page, quirks);
+}
+
+/* Like omni_build_remap_page() but keeps whatever is already in `page` for
+ * slots that have no key mapping (knob/consumer slots, M6-M8, the unused
+ * 20 00 00 slots). Pass the table last read from the device as `page`. */
+int omni_overlay_remap_page(const uint8_t assignment[][3], uint16_t keys,
+                            const struct omni_keymap *km,
+                            uint8_t page[OMNI_REMAP_PAGE], unsigned quirks)
+{
+    int key;
+    if (!assignment || !km || !page) return OMNI_ERR;
     for (key = 0; key < keys && key < OMNI_KEYREF_COUNT; key++) {
         int slot = km->key_to_slot[key];
         if (quirks & OMNI_QUIRK_SWAP_ENTER_BACKSLASH) {

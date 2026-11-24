@@ -462,6 +462,12 @@ static void on_write_layer(App *a, GtkWidget *btn)
     uint16_t kc;
     int layer, rc;
     if (!app_dev_check(a)) return;
+    if (omni_supports_group_rgb(a->dev)) {
+        /* 320F:505B: cmd 0A/0B pages 0-2 are the custom-colour groups, not
+         * key assignments (PROTOCOL.md 5.2b) - writing keys there paints junk */
+        app_status(a, "This keyboard's cmd 0B pages are lighting groups; use 'Apply to live bank (cmd 09)'.");
+        return;
+    }
     layer = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(a->layer_spin));
     kc = a->info[5];
     if (kc > OMNI_MAX_KEYS) kc = OMNI_MAX_KEYS;
@@ -487,13 +493,18 @@ static void on_apply_live(App *a, GtkWidget *btn)
     kc = a->info[5];
     if (kc > OMNI_MAX_KEYS) kc = OMNI_MAX_KEYS;
 
-    if (omni_build_remap_page(a->assignment, kc, &a->km, page, a->quirks) != OMNI_OK) {
+    /* start from the table the device reported, so slots we have no key for
+     * (knob, M6-M8, unused slots) are written back unchanged, not as 00 00 00 */
+    memset(page, 0, sizeof page);
+    memcpy(page, a->keyids, (size_t)kc * 3);
+    if (omni_overlay_remap_page(a->assignment, kc, &a->km, page, a->quirks) != OMNI_OK) {
         app_status(a, "cannot build assignment table"); return;
     }
     rc = omni_begin(a->dev);
     if (rc == OMNI_OK) rc = omni_write_assignments(a->dev, page, (uint16_t)(kc * 3), 0);
     if (rc == OMNI_OK) rc = omni_commit(a->dev);
     if (rc != OMNI_OK) { app_status(a, "cmd 09 failed: %s", omni_last_error()); return; }
+    memcpy(a->keyids, page, (size_t)kc * 3);
     app_log(a, "live assignment bank written (cmd 09), %u slots", kc);
     app_status(a, "Assignments applied to the live bank (cmd 09).");
 }
