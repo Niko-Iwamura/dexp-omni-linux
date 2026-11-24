@@ -5,8 +5,15 @@ keyboard configurator (`OMNI.exe`), reverse-engineered from the original
 Windows binary.
 
 * Device: DEXP Omni wired mechanical keyboard (black/white)
-* Controller: Sonix **VS11K09A**, USB **`0C45:1007`**, plain USB HID — no
-  kernel driver needed, everything goes through `/dev/hidraw`
+* USB **`320F:505B`** — "Evision RGB Keyboard", the unit actually sold as the
+  DEXP OMNI (verified on hardware). Plain USB HID, no kernel driver needed,
+  everything goes through `/dev/hidraw`
+* Controller: Sonix **VS11K09A** — this comes from the app's default profile
+  template, **not** from the hardware; see PROTOCOL.md §13.1
+* `0C45:1007` is the VID/PID in that template and is **not** what the retail
+  keyboard reports. It is kept in the code only as the second supported ID
+  (`OMNI_VID`/`OMNI_PID`), since the palette path is documented against it and
+  no such unit has been tested
 * Original software: DEXP-branded **Eevision/Acrox** configurator,
   platform string `eevision_A_kb_001_20180108_ak60`
 
