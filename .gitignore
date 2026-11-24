@@ -16,3 +16,6 @@ Claude_CODE_TOKEN.txt
 # python bytecode
 __pycache__/
 *.pyc
+
+# raw protocol dumps are kept in docs/dumps on purpose; scratch here
+/perkey_write.py.orig

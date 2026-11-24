@@ -1,0 +1,128 @@
+slot   0 (key   0 Esc       ): 00 00 00   T=00 X=00 P=00
+slot   1 (key  21 `         ): 00 00 00   T=00 X=00 P=00
+slot   2 (key  42 Tab       ): 00 00 00   T=00 X=00 P=00
+slot   3 (key  63 CapsLock  ): 00 00 00   T=00 X=00 P=00
+slot   4 (key  84 LShift    ): 00 00 00   T=00 X=00 P=00
+slot   5 (key 105 LCtrl     ): 00 00 00   T=00 X=00 P=00
+slot   6 (key  38 NumLock   ): 00 00 00   T=00 X=00 P=00
+slot   7 (key 120 M1        ): 00 00 00   T=00 X=00 P=00
+slot   8 (key   1 F1        ): 00 00 00   T=00 X=00 P=00
+slot   9 (key  22 1         ): 00 00 00   T=00 X=00 P=00
+slot  10 (key  43 Q         ): ff ff ff   T=FF X=FF P=FF
+slot  11 (key  64 A         ): ff ff ff   T=FF X=FF P=FF
+slot  12 (key 102 NonUS \   ): 00 00 00   T=00 X=00 P=00
+slot  13 (key 106 LWin      ): 00 00 00   T=00 X=00 P=00
+slot  14 (key  39 Num /     ): 00 00 00   T=00 X=00 P=00
+slot  15 (key 121 M2        ): 00 00 00   T=00 X=00 P=00
+slot  16 (key   2 F2        ): 00 00 00   T=00 X=00 P=00
+slot  17 (key  23 2         ): 00 00 00   T=00 X=00 P=00
+slot  18 (key  44 W         ): ff ff ff   T=FF X=FF P=FF
+slot  19 (key  65 S         ): ff ff ff   T=FF X=FF P=FF
+slot  20 (key  85 Z         ): ff ff ff   T=FF X=FF P=FF
+slot  21 (key 107 LAlt      ): 00 00 00   T=00 X=00 P=00
+slot  22 (key  40 Num *     ): 00 00 00   T=00 X=00 P=00
+slot  23 (key 122 M3        ): 00 00 00   T=00 X=00 P=00
+slot  24 (key   3 F3        ): 00 00 00   T=00 X=00 P=00
+slot  25 (key  24 3         ): 00 00 00   T=00 X=00 P=00
+slot  26 (key  45 E         ): ff ff ff   T=FF X=FF P=FF
+slot  27 (key  66 D         ): ff ff ff   T=FF X=FF P=FF
+slot  28 (key  86 X         ): ff ff ff   T=FF X=FF P=FF
+slot  29 (key  82 OEM-4     ): 00 00 00   T=00 X=00 P=00
+slot  30 (key  41 Num -     ): 00 00 00   T=00 X=00 P=00
+slot  31 (key 123 M4        ): 00 00 00   T=00 X=00 P=00
+slot  32 (key   4 F4        ): 00 00 00   T=00 X=00 P=00
+slot  33 (key  25 4         ): 00 00 00   T=00 X=00 P=00
+slot  34 (key  46 R         ): ff ff ff   T=FF X=FF P=FF
+slot  35 (key  67 F         ): ff ff ff   T=FF X=FF P=FF
+slot  36 (key  87 C         ): ff ff ff   T=FF X=FF P=FF
+slot  37 (key  80 OEM-2     ): 00 00 00   T=00 X=00 P=00
+slot  38 (key  59 Num 7     ): 00 00 00   T=00 X=00 P=00
+slot  39 (key 124 M5        ): 00 00 00   T=00 X=00 P=00
+slot  40 (key   5 F5        ): 00 00 00   T=00 X=00 P=00
+slot  41 (key  26 5         ): 00 00 00   T=00 X=00 P=00
+slot  42 (key  47 T         ): ff ff ff   T=FF X=FF P=FF
+slot  43 (key  68 G         ): ff ff ff   T=FF X=FF P=FF
+slot  44 (key  88 V         ): ff ff ff   T=FF X=FF P=FF
+slot  45 (key 108 Space     ): 00 00 00   T=00 X=00 P=00
+slot  46 (key  60 Num 8     ): 00 00 00   T=00 X=00 P=00
+slot  47 (key  47 T         ): 00 00 00   T=00 X=00 P=00
+slot  48 (key   6 F6        ): 00 00 00   T=00 X=00 P=00
+slot  49 (key  27 6         ): 00 00 00   T=00 X=00 P=00
+slot  50 (key  48 Y         ): ff ff ff   T=FF X=FF P=FF
+slot  51 (key  69 H         ): ff ff ff   T=FF X=FF P=FF
+slot  52 (key  89 B         ): ff ff ff   T=FF X=FF P=FF
+slot  53 (key  79 OEM-1     ): 00 00 00   T=00 X=00 P=00
+slot  54 (key  61 Num 9     ): 00 00 00   T=00 X=00 P=00
+slot  55 (key  55 \         ): 00 00 00   T=00 X=00 P=00
+slot  56 (key   7 F7        ): 00 00 00   T=00 X=00 P=00
+slot  57 (key  28 7         ): 00 00 00   T=00 X=00 P=00
+slot  58 (key  49 U         ): ff ff ff   T=FF X=FF P=FF
+slot  59 (key  70 J         ): ff ff ff   T=FF X=FF P=FF
+slot  60 (key  90 N         ): ff ff ff   T=FF X=FF P=FF
+slot  61 (key  83 OEM-5     ): 00 00 00   T=00 X=00 P=00
+slot  62 (key  76 Num 4     ): 00 00 00   T=00 X=00 P=00
+slot  63 (key  63 CapsLock  ): 00 00 00   T=00 X=00 P=00
+slot  64 (key   8 F8        ): 00 00 00   T=00 X=00 P=00
+slot  65 (key  29 8         ): 00 00 00   T=00 X=00 P=00
+slot  66 (key  50 I         ): ff ff ff   T=FF X=FF P=FF
+slot  67 (key  71 K         ): ff ff ff   T=FF X=FF P=FF
+slot  68 (key  91 M         ): ff ff ff   T=FF X=FF P=FF
+slot  69 (key  81 OEM-3     ): 00 00 00   T=00 X=00 P=00
+slot  70 (key  77 Num 5     ): 00 00 00   T=00 X=00 P=00
+slot  71 (key  18 ?         ): 00 00 00   T=00 X=00 P=00
+slot  72 (key   9 F9        ): 00 00 00   T=00 X=00 P=00
+slot  73 (key  30 9         ): 00 00 00   T=00 X=00 P=00
+slot  74 (key  51 O         ): ff ff ff   T=FF X=FF P=FF
+slot  75 (key  72 L         ): ff ff ff   T=FF X=FF P=FF
+slot  76 (key  92 ,         ): ff ff ff   T=FF X=FF P=FF
+slot  77 (key 109 RAlt      ): 00 00 00   T=00 X=00 P=00
+slot  78 (key  78 Num 6     ): 00 00 00   T=00 X=00 P=00
+slot  79 (key  19 ?         ): 00 00 00   T=00 X=00 P=00
+slot  80 (key  10 F10       ): 00 00 00   T=00 X=00 P=00
+slot  81 (key  31 0         ): 00 00 00   T=00 X=00 P=00
+slot  82 (key  52 P         ): ff ff ff   T=FF X=FF P=FF
+slot  83 (key  73 ;         ): ff ff ff   T=FF X=FF P=FF
+slot  84 (key  93 .         ): ff ff ff   T=FF X=FF P=FF
+slot  85 (key 110 Media-3   ): 00 00 00   T=00 X=00 P=00
+slot  86 (key 119 Num +     ): 00 00 00   T=00 X=00 P=00
+slot  87 (key  87 C         ): 00 00 00   T=00 X=00 P=00
+slot  88 (key  11 F11       ): 00 00 00   T=00 X=00 P=00
+slot  89 (key  32 -         ): 00 00 00   T=00 X=00 P=00
+slot  90 (key  53 [         ): ff ff ff   T=FF X=FF P=FF
+slot  91 (key  74 '         ): ff ff ff   T=FF X=FF P=FF
+slot  92 (key  94 /         ): ff ff ff   T=FF X=FF P=FF
+slot  93 (key 111 App       ): 00 00 00   T=00 X=00 P=00
+slot  94 (key  98 Num 2     ): 00 00 00   T=00 X=00 P=00
+slot  95 (key  95 RShift    ): 00 00 00   T=00 X=00 P=00
+slot  96 (key  12 F12       ): 00 00 00   T=00 X=00 P=00
+slot  97 (key  33 =         ): 00 00 00   T=00 X=00 P=00
+slot  98 (key  54 ]         ): ff ff ff   T=FF X=FF P=FF
+slot  99 (key  62 NonUS #   ): 00 00 00   T=00 X=00 P=00
+slot 100 (key 100 OEM-6     ): 00 00 00   T=00 X=00 P=00
+slot 101 (key 112 RCtrl     ): 00 00 00   T=00 X=00 P=00
+slot 102 (key  99 Num 3     ): 00 00 00   T=00 X=00 P=00
+slot 103 (key 103 OEM-8     ): 00 00 00   T=00 X=00 P=00
+slot 104 (key  13 F13       ): 00 00 00   T=00 X=00 P=00
+slot 105 (key  34 Backspace ): 00 00 00   T=00 X=00 P=00
+slot 106 (key  55 \         ): 00 00 00   T=00 X=00 P=00
+slot 107 (key  75 Enter     ): 00 00 00   T=00 X=00 P=00
+slot 108 (key  95 RShift    ): 00 00 00   T=00 X=00 P=00
+slot 109 (key 113 Left      ): ff ff ff   T=FF X=FF P=FF
+slot 110 (key 116 Num 0     ): 00 00 00   T=00 X=00 P=00
+slot 111 (key 111 App       ): 00 00 00   T=00 X=00 P=00
+slot 112 (key  14 F14       ): 00 00 00   T=00 X=00 P=00
+slot 113 (key 113 Left      ): 00 00 00   T=00 X=00 P=00
+slot 114 (key  56 Delete    ): 00 00 00   T=00 X=00 P=00
+slot 115 (key  37 PageUp    ): 00 00 00   T=00 X=00 P=00
+slot 116 (key  96 Up        ): ff ff ff   T=FF X=FF P=FF
+slot 117 (key 114 Down      ): ff ff ff   T=FF X=FF P=FF
+slot 118 (key 117 Num .     ): 00 00 00   T=00 X=00 P=00
+slot 119 (key 101 OEM-7     ): 00 00 00   T=00 X=00 P=00
+slot 120 (key  15 F15       ): 00 00 00   T=00 X=00 P=00
+slot 121 (key  36 Home      ): 00 00 00   T=00 X=00 P=00
+slot 122 (key  57 End       ): 00 00 00   T=00 X=00 P=00
+slot 123 (key  58 PageDown  ): 00 00 00   T=00 X=00 P=00
+slot 124 (key  97 Num 1     ): 00 00 00   T=00 X=00 P=00
+slot 125 (key 115 Right     ): ff ff ff   T=FF X=FF P=FF
+slot 126 (key 118 Num Enter ): 00 00 00   T=00 X=00 P=00
+slot 127 (key 103 OEM-8     ): 00 00 00   T=00 X=00 P=00
