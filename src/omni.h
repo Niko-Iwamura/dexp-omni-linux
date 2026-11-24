@@ -82,6 +82,8 @@ int omni_read_small(omni_dev *d, uint8_t cmd, uint16_t offset,
 
 /* device info (cmd 03): 34 bytes; [5]=key count, [6]=macro capacity*128 */
 int omni_read_info(omni_dev *d, uint8_t info[34]);
+/* generic chunked read of any read-type command (cmd 05, 07, 0A, 1B ...) */
+int omni_read_cmd(omni_dev *d, uint8_t cmd, uint16_t offset, uint8_t *buf, uint16_t len);
 
 /* key-ID table (cmd 07): keycount*3 bytes of [T,X,P] triples */
 int omni_read_keyids(omni_dev *d, uint8_t *table, uint16_t len);

@@ -1306,3 +1306,9 @@ void omni_device_id(const omni_dev *d, uint16_t *vid, uint16_t *pid)
     *vid = d ? d->vid : 0;
     *pid = d ? d->pid : 0;
 }
+
+int omni_read_cmd(omni_dev *d, uint8_t cmd, uint16_t offset, uint8_t *buf, uint16_t len)
+{
+    if (!d || d->fd < 0) return OMNI_ERR;
+    return chunked_read(d, cmd, buf, len, offset);
+}

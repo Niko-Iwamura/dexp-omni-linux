@@ -80,6 +80,7 @@ static void usage(void)
 "  restore FILE [--dry-run]             write a backed-up settings record back\n"
 "  set [--key6 0|1] [--win 0|1] [--wflag 0|1] [--polling 1|2|4|8]\n"
 "  dump --offset 0xNN --len N           raw settings-NVRAM read (cmd 05)\n"
+"  snapshot FILE [--limit 0xNNNN]       read-only dump of keyboard memory (diff with tools/snapdiff.py)\n"
 "  keyids                               dump key-ID/live table (cmd 07)\n"
 "  ledidx                               dump per-LED palette table (cmd 1B)\n"
 "  remap --layer N --read               dump a remap layer page (cmd 0A)\n"
@@ -459,6 +460,65 @@ int main(int argc, char **argv)
         if (wflag >= 0) s.w_flag = wflag;
         if (poll > 0) s.polling = poll;
         { int r = write_settings(d, &before, &s, 0, 0); omni_close(d); return r; }
+    } else if (!strcmp(cmd, "snapshot")) {
+        /* read-only dump for diffing: device info, key IDs, LED table and the
+         * cmd 05 / cmd 0A address spaces. Take one before and one after a change
+         * made in the Windows app, then compare with tools/snapdiff.py to see
+         * where that setting lives in the keyboard's memory. */
+        const char *path = argc > 2 ? argv[2] : NULL;
+        unsigned limit = 0x4000, off, kc;
+        static const uint8_t spaces[2] = { 0x05, 0x0A };
+        uint8_t buf[56], tab[512], info[34];
+        FILE *f;
+
+        for (int i = 3; i < argc; i++)
+            if (!strcmp(argv[i], "--limit") && i + 1 < argc) limit = (unsigned)strtoul(argv[++i], NULL, 0);
+        if (!path || path[0] == '-') {
+            fprintf(stderr, "usage: omni-cli snapshot FILE [--limit 0xNNNN]\n");
+            omni_close(d);
+            return 1;
+        }
+        if (limit > 0xFF00) limit = 0xFF00;
+        f = fopen(path, "w");
+        if (!f) { fprintf(stderr, "cannot write %s: %s\n", path, strerror(errno)); omni_close(d); return 1; }
+        fprintf(f, "# omni snapshot v1 (read-only dump)\n");
+
+        if (omni_read_info(d, info) == OMNI_OK) {
+            fprintf(f, "03 0000 ");
+            for (int i = 0; i < 34; i++) fprintf(f, "%02x", info[i]);
+            fputc('\n', f);
+        }
+        kc = omni_key_count(d);
+        if (kc && kc * 3 <= sizeof tab && omni_read_cmd(d, 0x07, 0, tab, (uint16_t)(kc * 3)) == OMNI_OK) {
+            fprintf(f, "07 0000 ");
+            for (unsigned i = 0; i < kc * 3; i++) fprintf(f, "%02x", tab[i]);
+            fputc('\n', f);
+        }
+        if (kc && kc <= sizeof tab && omni_read_cmd(d, 0x1B, 0, tab, (uint16_t)kc) == OMNI_OK) {
+            fprintf(f, "1b 0000 ");
+            for (unsigned i = 0; i < kc; i++) fprintf(f, "%02x", tab[i]);
+            fputc('\n', f);
+        }
+        for (int sp = 0; sp < 2; sp++) {
+            unsigned ok = 0, errs = 0;
+            for (off = 0; off < limit; off += 56) {
+                int r = omni_read_cmd(d, spaces[sp], (uint16_t)off, buf, 56);
+                if (r != OMNI_OK) {
+                    fprintf(f, "%02x %04x ERR\n", spaces[sp], off);
+                    if (++errs >= 4) break;
+                    continue;
+                }
+                errs = 0;
+                ok++;
+                fprintf(f, "%02x %04x ", spaces[sp], off);
+                for (int i = 0; i < 56; i++) fprintf(f, "%02x", buf[i]);
+                fputc('\n', f);
+            }
+            printf("cmd %02x: %u blocks of 56 bytes read%s\n", spaces[sp], ok,
+                   errs >= 4 ? " (stopped at the first unreadable area)" : "");
+        }
+        fclose(f);
+        printf("snapshot written to %s\n", path);
     } else if (!strcmp(cmd, "dump")) {
         unsigned off = 0, len = 64;
         for (int i = 2; i < argc; i++) {
