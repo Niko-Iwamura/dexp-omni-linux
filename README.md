@@ -29,7 +29,10 @@ original skin XML, so it matches the physical keyboard.
   On the retail **320F:505B** there is no palette: each custom group is a
   384-byte raw-RGB page (128 slots × 3) at `0x6C0/0x8C0/0xAC0`, also
   aliased by the cmd 0x0B pages `0x000/0x200/0x400`; mode **20 = Customize**.
-  Verified in a write/restore cycle — see PROTOCOL.md §5.2b
+  Implemented in the library (`omni_read_group` / `omni_write_group_verified`),
+  in the CLI (`omni-cli group`) and in the GUI, which picks whichever path the
+  attached keyboard uses and paints straight onto a keyboard diagram. Verified
+  in write/restore cycles — see PROTOCOL.md §5.2b
 * **System settings** — polling rate 1/2/4/8 ms, 6KRO flag, Windows-key lock
   (settings record + status query cmd 1A), W flag
 * **Macros** — macro table upload in the `0x55AA` container format (cmd 15),
@@ -126,8 +129,10 @@ Without the rule you need `sudo`.
 
 * **Device** — scan, connect (probes each HID interface with cmd AA and
   picks the one that answers), system settings, win-lock query, probe/pulse
-* **Lighting** — global effects; custom per-key mode: pick a palette colour,
-  click keys to paint them, Apply
+* **Lighting** — global effects; custom per-key colours: pick a colour, click
+  keys to paint them, then Apply (verified write). The page switches itself to
+  the path the connected keyboard supports: a raw-RGB page per custom group on
+  320F:505B, the 13-colour palette + cmd 0x12 index table on 0C45:1007
 * **Keys** — click a key, build a new assignment, then apply to the live
   bank (immediate) or write a layer page (stored profile)
 * **Macros** — edit events, upload, then bind M1–M5 (or any key via type
@@ -148,12 +153,21 @@ omni-cli remap --layer 1 --read
 omni-cli remap --layer 1 --set 120=M5 --set 22=Esc     # M1 -> M5, 1 -> Esc
 omni-cli dump --offset 0 --len 64
 omni-cli raw --frame "04 00 00 1C 00 00 00 00"
+
+# custom-group per-key colours (320F:505B, PROTOCOL.md 5.2b)
+omni-cli group --read                            # dump group 0's colour page
+omni-cli group --group 1 --save g1.bin           # back it up first
+omni-cli group --group 1 --set PageUp=0200B2 --set D=FF0000
+omni-cli group --group 1 --set D=FFFFFF --dry-run
+omni-cli group --group 1 --from g1.bin           # restore the whole page
+omni-cli group --group 0 --mode                  # switch to Customize (mode 20)
 ```
 
 ## Source layout
 
 ```
-src/omni.c          protocol library (transport, all 16 commands, helpers)
+src/omni.c          protocol library (transport, all 16 commands, helpers,
+                    custom-group raw-RGB pages for 320F:505B)
 src/omni.h          public API
 src/omni_keys.c     static key/mode/usage tables extracted from OMNI.exe
 src/omni_layout.c   key geometry generated from the original skin XML

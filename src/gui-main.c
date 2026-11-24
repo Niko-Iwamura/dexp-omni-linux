@@ -152,6 +152,25 @@ int app_connect(App *a, const char *node)
 
     a->quirks = (a->info[0] == 0x14) ? OMNI_QUIRK_SWAP_ENTER_BACKSLASH : 0;
 
+    /* 320F:505B: per-key colour is a raw-RGB page per custom group, not the
+     * palette/index pair; read the active group and remember which path the
+     * paint view must use (PROTOCOL.md 5.2b). */
+    a->paint_raw = omni_supports_group_rgb(d);
+    if (a->cust_vbox) app_set_custom_path(a, a->paint_raw);
+    if (a->paint_raw) {
+        uint8_t grp = a->have_settings ? a->settings.custom_group : 0;
+        uint16_t glen = (uint16_t)(kc * 3);
+        if (grp > 2) grp = 0;
+        if (glen > OMNI_GROUP_MAXLEN) glen = OMNI_GROUP_MAXLEN;
+        if (omni_read_group(d, grp, a->group_rgb, glen) == OMNI_OK) {
+            a->have_group = 1;
+            a->group_shown = grp;
+        } else {
+            a->have_group = 0;
+            app_log(a, "group colour page read failed: %s", omni_last_error());
+        }
+    }
+
     app_log(a, "connected: %s (%s), model %u, %u keys, macro storage %u B",
             omni_dev_node(d), omni_dev_name(d), a->info[0], a->info[5],
             omni_macro_capacity(d));
@@ -171,6 +190,8 @@ void app_disconnect(App *a)
     a->have_keymap = 0;
     a->have_settings = 0;
     a->have_ledidx = 0;
+    a->have_group = 0;
+    if (a->cust_vbox) app_set_custom_path(a, 0);
     app_refresh_all(a);
     app_status(a, "Disconnected.");
     app_log(a, "disconnected");
@@ -216,8 +237,9 @@ void app_refresh_all(App *a)
             a->settings.blue / 255.0, 1.0 };
         gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(a->color_btn), &rgba);
         gtk_switch_set_active(GTK_SWITCH(a->multi_sw), a->settings.multicolor);
-        gtk_combo_box_set_active(GTK_COMBO_BOX(a->group_combo),
-                                 a->settings.custom_group < 3 ? a->settings.custom_group : 0);
+        if (a->group_combo)
+            gtk_combo_box_set_active(GTK_COMBO_BOX(a->group_combo),
+                                     a->settings.custom_group < 3 ? a->settings.custom_group : 0);
     }
 
     /* device page switches */
@@ -236,6 +258,7 @@ void app_refresh_all(App *a)
 
     kb_view_refresh(a->kb_select);
     if (a->kb_paint) kb_view_refresh(a->kb_paint);
+    if (a->kb_rgb) kb_view_refresh(a->kb_rgb);
     macro_refresh(a);
     if (a->macro_cap_lbl) {
         if (a->have_dev) {
@@ -707,6 +730,7 @@ GtkWidget *build_console_page(App *a)
 
 static const char *shot_path = NULL;
 static int shot_page = -1;
+static int shot_connect = 0;
 
 static gboolean screenshot_cb(gpointer data)
 {
@@ -733,12 +757,16 @@ int main(int argc, char **argv)
     memset(&app, 0, sizeof app);
     app.selected_key = -1;
     app.paint_idx = 0;
+    app.paint_rgb[0] = app.paint_rgb[1] = app.paint_rgb[2] = 0xFF;
+    app.group_shown = -1;
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--screenshot") && i + 1 < argc)
             shot_path = argv[++i];
         else if (!strcmp(argv[i], "--page") && i + 1 < argc)
             shot_page = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--connect"))
+            shot_connect = 1;   /* test hook: connect before the screenshot */
     }
 
     gtk_init(&argc, &argv);
@@ -785,6 +813,9 @@ int main(int argc, char **argv)
                      "Protocol reference: PROTOCOL.md in the source tree.");
 
     gtk_widget_show_all(app.win);
+
+    if (shot_connect)
+        app_connect(&app, NULL);
 
     if (shot_path) {
         if (shot_page >= 0)

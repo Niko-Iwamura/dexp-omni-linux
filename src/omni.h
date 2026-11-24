@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -92,6 +93,35 @@ int omni_write_assignments(omni_dev *d, const uint8_t *table, uint16_t len, uint
 int omni_read_remap (omni_dev *d, uint8_t layer, uint8_t *page, uint16_t len);
 int omni_write_remap(omni_dev *d, uint8_t layer, const uint8_t *page, uint16_t len);
 
+/* Custom-group colour pages, 320F:505B only (PROTOCOL.md 5.2b).
+ * Three 384-byte pages (128 slots x 3 RGB bytes, slot-major) at settings-NVRAM
+ * 0x6C0/0x8C0/0xAC0, reachable both through cmd 05/06 and - as the same bytes -
+ * through cmd 0A/0B at 0x000/0x200/0x400. */
+#define OMNI_GROUP_OFF0   0x6C0u
+#define OMNI_GROUP_MAXLEN 384u
+#define OMNI_CUSTOM_MODE  20u    /* settings-record mode byte: "Customize" */
+
+struct omni_keymap;   /* defined below */
+
+int  omni_supports_group_rgb(const omni_dev *d);   /* 1 on 320F:505B */
+/* cmd 05/06 address of a custom group page (validates group 0..2) */
+int  omni_group_off(uint8_t group, uint16_t *off);
+int  omni_read_group (omni_dev *d, uint8_t group, uint8_t *page, uint16_t len);
+int  omni_write_group(omni_dev *d, uint8_t group, const uint8_t *page,
+                      uint16_t len, int via_cmd06);
+/* write, then read back and compare the whole page */
+int  omni_write_group_verified(omni_dev *d, uint8_t group, const uint8_t *page,
+                               uint16_t len, int via_cmd06);
+/* set one slot's RGB inside a caller-owned page buffer (len >= (slot+1)*3) */
+int  omni_group_set_slot(uint8_t *page, uint16_t len, uint16_t slot,
+                         uint8_t r, uint8_t g, uint8_t b);
+/* resolve a key index through the map, then set its slot colour */
+int  omni_group_set_key(uint8_t *page, uint16_t len, const struct omni_keymap *km,
+                        int key, uint8_t r, uint8_t g, uint8_t b);
+/* dump a page as "slot col row name RRGGBB" lines to fp */
+void omni_group_print(FILE *fp, const uint8_t *page, uint16_t len,
+                      const struct omni_keymap *km);
+
 /* per-LED palette index table (cmd 1B read / cmd 12 write): 1 byte per LED */
 int omni_read_ledidx (omni_dev *d, uint8_t *tab, uint16_t count);
 int omni_write_ledidx(omni_dev *d, const uint8_t *tab, uint16_t count);
@@ -144,6 +174,9 @@ int  omni_device_layout(const omni_dev *d);
 
 /* build the key<->slot map from the cmd-07 key-ID table */
 int omni_build_keymap(const uint8_t *keyids, uint16_t keycount, struct omni_keymap *km);
+
+/* key reference index for a name ("PageUp", "D", "f12"); -1 if unknown */
+int omni_key_index_by_name(const char *name);
 
 /* ---- lighting profiles, backup/restore, verified writes (omni_profile.c) ---- */
 struct omni_profile {

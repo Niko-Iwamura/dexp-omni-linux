@@ -96,7 +96,45 @@ static gboolean kb_draw(GtkWidget *w, cairo_t *cr, gpointer data)
         double x = (KV_MARGIN + b->x) * sx, y = (KV_MARGIN + b->y) * sy;
         double wd = b->w * sx, ht = b->h * sy;
 
-        if (kv->paint_mode) {
+        if (kv->paint_mode && a->paint_raw) {
+            /* 320F:505B: the page holds one raw RGB triple per slot */
+            int slot = app_key_to_slot(a, b->key_idx);
+            const uint8_t *c = NULL;
+            if (slot >= 0 && a->have_group && (uint32_t)slot * 3 + 3 <= OMNI_GROUP_MAXLEN)
+                c = a->group_rgb + slot * 3;
+            cairo_set_line_width(cr, 1.0);
+            if (c && (c[0] || c[1] || c[2])) {
+                set_color(cr, c, 1.0);
+                rounded_rect(cr, x, y, wd, ht, 3);
+                cairo_fill_preserve(cr);
+                cairo_set_source_rgb(cr, 0.35, 0.35, 0.38);
+                cairo_stroke(cr);
+            } else {
+                cairo_set_source_rgb(cr, 0.16, 0.16, 0.18);
+                rounded_rect(cr, x, y, wd, ht, 3);
+                cairo_fill_preserve(cr);
+                cairo_set_source_rgb(cr, 0.35, 0.35, 0.38);
+                cairo_stroke(cr);
+            }
+            if (wd > 13) {
+                cairo_text_extents_t ext;
+                /* dark label on bright keys, white on dark ones (BT.601 luma) */
+                if (c) {
+                    unsigned luma = (c[0] * 299u + c[1] * 587u + c[2] * 114u) / 1000u;
+                    if (luma > 140u)
+                        cairo_set_source_rgba(cr, 0.10, 0.10, 0.12, 0.95);
+                    else
+                        cairo_set_source_rgba(cr, 1, 1, 1, 0.92);
+                } else {
+                    cairo_set_source_rgba(cr, 1, 1, 1, 0.92);
+                }
+                cairo_set_font_size(cr, 8.5);
+                cairo_text_extents(cr, key_name(b->key_idx), &ext);
+                cairo_move_to(cr, x + (wd - ext.width) / 2 - ext.x_bearing,
+                                   y + (ht - ext.height) / 2 - ext.y_bearing);
+                cairo_show_text(cr, key_name(b->key_idx));
+            }
+        } else if (kv->paint_mode) {
             int slot = app_key_to_slot(a, b->key_idx);
             uint8_t idx = (slot >= 0 && a->have_ledidx) ? a->ledidx[slot] : 0xFF;
             cairo_set_line_width(cr, 1.0);
@@ -145,7 +183,9 @@ static gboolean kb_draw(GtkWidget *w, cairo_t *cr, gpointer data)
         cairo_set_font_size(cr, 8.0);
         cairo_move_to(cr, x + 8 * sx, y + 14 * sy);
         cairo_show_text(cr, kv->paint_mode
-            ? "click keys to paint them with the selected palette colour"
+            ? (a->paint_raw
+               ? "click keys to paint them with the selected colour (raw RGB)"
+               : "click keys to paint them with the selected palette colour")
             : "extra keys not shown on the device image (M1-M5, media row, …)");
     }
     return FALSE;
@@ -185,7 +225,24 @@ static gboolean kb_press(GtkWidget *w, GdkEventButton *ev, gpointer data)
     }
     if (hit < 0) return FALSE;
 
-    if (kv->paint_mode) {
+    if (kv->paint_mode && a->paint_raw) {
+        int slot = app_key_to_slot(a, hit);
+        if (slot < 0) {
+            app_status(a, "Key %d (%s) has no device slot mapping.", hit, key_name(hit));
+        } else if (!a->have_group) {
+            app_status(a, "Read the group colours first (button above the keyboard).");
+        } else if ((uint32_t)slot * 3 + 3 > OMNI_GROUP_MAXLEN) {
+            app_status(a, "Slot %d is outside the colour page.", slot);
+        } else {
+            uint8_t *c = a->group_rgb + slot * 3;
+            c[0] = a->paint_rgb[0];
+            c[1] = a->paint_rgb[1];
+            c[2] = a->paint_rgb[2];
+            gtk_widget_queue_draw(w);
+            app_status(a, "Painted %s (slot %d) #%02X%02X%02X — press Apply to write it.",
+                       key_name(hit), slot, c[0], c[1], c[2]);
+        }
+    } else if (kv->paint_mode) {
         int slot = app_key_to_slot(a, hit);
         if (slot < 0) {
             app_status(a, "Key %d (%s) has no device slot mapping.", hit, key_name(hit));

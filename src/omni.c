@@ -570,6 +570,124 @@ int omni_write_remap(omni_dev *d, uint8_t layer, const uint8_t *page, uint16_t l
     return chunked_write(d, 0x0B, page, len, (uint16_t)(layer * OMNI_REMAP_PAGE), 0);
 }
 
+/* ------------------------------------------------------------------ */
+/* Custom-group RGB pages (320F:505B, PROTOCOL.md 5.2b)                */
+
+int omni_supports_group_rgb(const omni_dev *d)
+{
+    return d && d->vid == OMNI_VID2 && d->pid == OMNI_PID2;
+}
+
+int omni_group_off(uint8_t group, uint16_t *off)
+{
+    if (group > 2) return fail("custom group must be 0-2 (got %u)", group);
+    if (off) *off = (uint16_t)(OMNI_GROUP_OFF0 + group * OMNI_REMAP_PAGE);
+    return OMNI_OK;
+}
+
+static int group_check(const omni_dev *d, uint8_t group, uint16_t len)
+{
+    if (!d || d->fd < 0) return OMNI_ERR;
+    if (!omni_supports_group_rgb(d))
+        return fail("custom-group RGB pages are only known on USB %04X:%04X "
+                    "(this is %04X:%04X - see PROTOCOL.md 5.2b)",
+                    OMNI_VID2, OMNI_PID2, d->vid, d->pid);
+    if (group > 2) return fail("custom group must be 0-2 (got %u)", group);
+    if (len == 0 || len > OMNI_GROUP_MAXLEN)
+        return fail("group page length must be 1-%u bytes (got %u)",
+                    OMNI_GROUP_MAXLEN, len);
+    return OMNI_OK;
+}
+
+int omni_read_group(omni_dev *d, uint8_t group, uint8_t *page, uint16_t len)
+{
+    int rc = group_check(d, group, len);
+    if (rc != OMNI_OK) return rc;
+    return chunked_read(d, 0x05, page, len, (uint16_t)(OMNI_GROUP_OFF0 + group * OMNI_REMAP_PAGE));
+}
+
+int omni_write_group(omni_dev *d, uint8_t group, const uint8_t *page,
+                     uint16_t len, int via_cmd06)
+{
+    int rc = group_check(d, group, len);
+    if (rc != OMNI_OK) return rc;
+    /* Both address spaces hit the same bytes: cmd 06 at 0x6C0+group*0x200,
+     * or cmd 0B at group*0x200 (which cmd 0A reads back as 0x000/0x200/0x400). */
+    if (via_cmd06)
+        return chunked_write(d, 0x06, page, len,
+                             (uint16_t)(OMNI_GROUP_OFF0 + group * OMNI_REMAP_PAGE), 0);
+    return chunked_write(d, 0x0B, page, len, (uint16_t)(group * OMNI_REMAP_PAGE), 0);
+}
+
+int omni_write_group_verified(omni_dev *d, uint8_t group, const uint8_t *page,
+                              uint16_t len, int via_cmd06)
+{
+    uint8_t back[OMNI_GROUP_MAXLEN];
+    int rc;
+
+    rc = group_check(d, group, len);
+    if (rc != OMNI_OK) return rc;
+
+    if ((rc = omni_begin(d)) != OMNI_OK) return rc;
+    rc = omni_write_group(d, group, page, len, via_cmd06);
+    if (rc == OMNI_OK) { msleep(10); rc = omni_commit(d); }
+    else omni_commit(d);
+    if (rc != OMNI_OK) return rc;
+
+    if ((rc = omni_read_group(d, group, back, len)) != OMNI_OK) return rc;
+    if (memcmp(back, page, len) != 0) {
+        uint16_t i;
+        for (i = 0; i < len; i++)
+            if (back[i] != page[i]) break;
+        return fail("group %u write did not stick: byte 0x%03X is %02X, expected %02X",
+                    group, i, back[i], page[i]);
+    }
+    return OMNI_OK;
+}
+
+int omni_group_set_slot(uint8_t *page, uint16_t len, uint16_t slot,
+                        uint8_t r, uint8_t g, uint8_t b)
+{
+    if (!page) return OMNI_ERR;
+    if (slot >= OMNI_MAX_KEYS)
+        return fail("slot %u out of range (0-%u)", slot, OMNI_MAX_KEYS - 1);
+    if ((uint32_t)slot * 3 + 3 > len)
+        return fail("slot %u is outside the %u-byte page read", slot, len);
+    page[slot * 3 + 0] = r;
+    page[slot * 3 + 1] = g;
+    page[slot * 3 + 2] = b;
+    return OMNI_OK;
+}
+
+int omni_group_set_key(uint8_t *page, uint16_t len, const struct omni_keymap *km,
+                       int key, uint8_t r, uint8_t g, uint8_t b)
+{
+    int slot;
+    if (!km) return OMNI_ERR;
+    if (key < 0 || key >= OMNI_KEYREF_COUNT) return fail("key index %d out of range", key);
+    slot = km->key_to_slot[key];
+    if (slot == 0xFF) return fail("key %d has no device slot", key);
+    return omni_group_set_slot(page, len, (uint16_t)slot, r, g, b);
+}
+
+void omni_group_print(FILE *fp, const uint8_t *page, uint16_t len,
+                      const struct omni_keymap *km)
+{
+    uint16_t slot, slots = (uint16_t)(len / 3);
+    unsigned lit = 0;
+
+    for (slot = 0; slot < slots; slot++) {
+        const uint8_t *c = page + slot * 3;
+        int key = km ? km->slot_to_key[slot] : 0xFF;
+        const char *name = (key != 0xFF && key < OMNI_KEYREF_COUNT && omni_keyref_name[key])
+                           ? omni_keyref_name[key] : "?";
+        if (c[0] || c[1] || c[2]) lit++;
+        fprintf(fp, "slot %3u col %2u row %u  %-10s  %02X %02X %02X\n",
+                slot, slot / 8, slot % 8, name, c[0], c[1], c[2]);
+    }
+    fprintf(fp, "%u of %u slots are non-zero\n", lit, slots);
+}
+
 int omni_read_ledidx(omni_dev *d, uint8_t *tab, uint16_t count)
 {
     if (!d || d->fd < 0) return OMNI_ERR;
@@ -982,6 +1100,25 @@ static int keyref_lookup(const char *norm, uint8_t out[3])
         }
     }
     return 0;
+}
+
+int omni_key_index_by_name(const char *name)
+{
+    char norm[96], buf[128], nm[48];
+    int i;
+
+    if (!name) return -1;
+    snprintf(buf, sizeof buf, "%s", name);
+    norm_name(buf, norm, sizeof norm);
+    if (!norm[0]) return -1;
+    for (i = 0; i < OMNI_KEYREF_COUNT; i++) {
+        if (!omni_keyref_name[i])
+            continue;
+        norm_name(omni_keyref_name[i], nm, sizeof nm);
+        if (!strcmp(norm, nm))
+            return i;
+    }
+    return -1;
 }
 
 /* exactly three hex bytes separated by space, ':' or '-' ("20 00 29") */

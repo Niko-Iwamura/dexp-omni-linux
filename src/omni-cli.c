@@ -87,12 +87,20 @@ static void usage(void)
 "                                       modify + write the page (cmd 0B)\n"
 "                                       ASSIGN: 'A', 'ctrl+a', 'M3', 'Media 0x1B',\n"
 "                                               '20 00 29', '0x200029', 'disabled'\n"
+"  group [--group 0-2] [--read]         dump a custom-group RGB page (320F:505B)\n"
+"  group --group N --set KEY=RRGGBB [--set ...] [--dry-run]\n"
+"                                       paint keys, verified write (cmd 06 @0x6C0)\n"
+"  group --group N --from FILE          write a whole 384-byte page from a file\n"
+"  group --group N --save FILE          dump the page to FILE (raw binary)\n"
+"  group --group N --mode               switch the settings record to Customize\n"
 "  raw --frame \"04 ...\"                 send a raw 64-byte frame, print reply\n"
 "\n"
 "Examples:\n"
 "  omni-cli lighting --mode 3 --brightness 4 --speed 2 --color FF6600 --dry-run\n"
 "  omni-cli profile save night && omni-cli profile apply night\n"
 "  omni-cli remap --layer 1 --set 120=M5 --set 22=Esc\n"
+"  omni-cli group --read                    # dump group 0 per-key colours\n"
+"  omni-cli group --group 1 --set PageUp=0200B2 --set D=FF0000\n"
     );
 }
 
@@ -557,6 +565,161 @@ int main(int argc, char **argv)
                    page[s*3], page[s*3+1], page[s*3+2], txt);
         }
         (void)do_read;
+    } else if (!strcmp(cmd, "group")) {
+        /* custom-group RGB pages, 320F:505B only (PROTOCOL.md 5.2b) */
+        uint8_t info[34];
+        int group = 0, dry = 0, want_mode = 0, do_read = 1;
+        const char *from = NULL, *save = NULL;
+        const char *sets[128]; int nsets = 0;
+        for (int i = 2; i < argc; i++) {
+            if (!strcmp(argv[i], "--group") && i + 1 < argc) group = atoi(argv[++i]);
+            else if (!strcmp(argv[i], "--read")) do_read = 1;
+            else if (!strcmp(argv[i], "--dry-run")) dry = 1;
+            else if (!strcmp(argv[i], "--mode")) want_mode = 1;
+            else if (!strcmp(argv[i], "--from") && i + 1 < argc) from = argv[++i];
+            else if (!strcmp(argv[i], "--save") && i + 1 < argc) save = argv[++i];
+            else if (!strcmp(argv[i], "--set") && i + 1 < argc && nsets < 128) sets[nsets++] = argv[++i];
+            else { fprintf(stderr, "group: unknown or incomplete option %s\n", argv[i]); return 1; }
+        }
+        if (group < 0 || group > 2) {
+            fprintf(stderr, "group: --group must be 0-2\n");
+            return 1;
+        }
+        if (from && (nsets || want_mode)) {
+            fprintf(stderr, "group: --from replaces the whole page; do not combine it with --set/--mode\n");
+            return 1;
+        }
+        if (!omni_supports_group_rgb(d)) {
+            fprintf(stderr, "group: custom-group RGB pages are only known on "
+                            "320F:505B (PROTOCOL.md 5.2b)\n");
+            omni_close(d);
+            return 1;
+        }
+
+        rc = omni_read_info(d, info);
+        if (rc != OMNI_OK) { print_rc("device info", rc); omni_close(d); return 1; }
+        unsigned kc = info[5];
+        if (kc > OMNI_MAX_KEYS) kc = OMNI_MAX_KEYS;
+
+        struct omni_keymap km;
+        memset(&km, 0, sizeof km);
+        {
+            uint8_t keyids[512];
+            rc = omni_begin(d);
+            if (rc == OMNI_OK) rc = omni_read_keyids(d, keyids, (uint16_t)(kc * 3));
+            if (rc == OMNI_OK) rc = omni_commit(d);
+            if (rc != OMNI_OK) { print_rc("key-ID table (cmd 07)", rc); omni_close(d); return 1; }
+            omni_build_keymap(keyids, (uint16_t)kc, &km);
+        }
+
+        uint16_t plen = (uint16_t)(kc * 3);
+        if (plen > OMNI_GROUP_MAXLEN) plen = OMNI_GROUP_MAXLEN;
+        uint8_t page[OMNI_GROUP_MAXLEN];
+
+        if (from) {
+            FILE *f = fopen(from, "rb");
+            if (!f) { fprintf(stderr, "group: cannot open %s: %s\n", from, strerror(errno)); omni_close(d); return 1; }
+            size_t got = fread(page, 1, plen, f);
+            fclose(f);
+            if (got != plen) {
+                fprintf(stderr, "group: %s holds %zu bytes, need %u\n", from, got, plen);
+                omni_close(d);
+                return 1;
+            }
+            if (dry) {
+                printf("dry-run: would write %u bytes from %s to group %d (0x%03X)\n",
+                       plen, from, group, OMNI_GROUP_OFF0 + group * OMNI_REMAP_PAGE);
+                omni_close(d);
+                return 0;
+            }
+            rc = omni_write_group_verified(d, (uint8_t)group, page, plen, 1);
+            print_rc("write group page (cmd 06)", rc);
+            omni_close(d);
+            return rc == OMNI_OK ? 0 : 1;
+        }
+
+        rc = omni_read_group(d, (uint8_t)group, page, plen);
+        if (rc != OMNI_OK) { print_rc("read group page (cmd 05)", rc); omni_close(d); return 1; }
+
+        if (save) {
+            FILE *f = fopen(save, "wb");
+            if (!f) { fprintf(stderr, "group: cannot write %s: %s\n", save, strerror(errno)); omni_close(d); return 1; }
+            size_t put = fwrite(page, 1, plen, f);
+            fclose(f);
+            if (put != plen) { fprintf(stderr, "group: short write to %s\n", save); omni_close(d); return 1; }
+            printf("group %d: %u bytes saved to %s\n", group, plen, save);
+        }
+
+        for (int i = 0; i < nsets; i++) {
+            char buf[128];
+            snprintf(buf, sizeof buf, "%s", sets[i]);
+            char *eq = strchr(buf, '=');
+            if (!eq) { fprintf(stderr, "bad --set '%s' (need KEY=RRGGBB)\n", sets[i]); omni_close(d); return 1; }
+            *eq = 0;
+            uint8_t r, g, b;
+            if (omni_parse_color(eq + 1, &r, &g, &b) != OMNI_OK) {
+                fprintf(stderr, "bad colour '%s' (want RRGGBB)\n", eq + 1);
+                omni_close(d);
+                return 1;
+            }
+            int key = -1;
+            char *end = NULL;
+            long as_num = strtol(buf, &end, 10);
+            if (end && *end == 0 && as_num >= 0 && as_num < OMNI_KEYREF_COUNT) key = (int)as_num;
+            else key = omni_key_index_by_name(buf);
+            if (key < 0) { fprintf(stderr, "unknown key '%s'\n", buf); omni_close(d); return 1; }
+            int slot = km.key_to_slot[key];
+            if (slot == 0xFF || (unsigned)slot >= kc) {
+                fprintf(stderr, "key '%s' (idx %d) has no slot on this keyboard\n", buf, key);
+                omni_close(d);
+                return 1;
+            }
+            const uint8_t *old = page + slot * 3;
+            uint8_t was[3] = { old[0], old[1], old[2] };
+            if (omni_group_set_slot(page, plen, (uint16_t)slot, r, g, b) != OMNI_OK) {
+                fprintf(stderr, "group: %s\n", omni_last_error());
+                omni_close(d);
+                return 1;
+            }
+            printf("set %s (key %d, slot %d): %02X%02X%02X -> %02X%02X%02X\n",
+                   omni_keyref_name[key], key, slot, was[0], was[1], was[2], r, g, b);
+        }
+
+        int changed = nsets > 0 || want_mode;
+        if (changed && !dry) {
+            if (nsets > 0) {
+                rc = omni_write_group_verified(d, (uint8_t)group, page, plen, 1);
+                print_rc("write group page (cmd 06 + read-back)", rc);
+                if (rc != OMNI_OK) { omni_close(d); return 1; }
+            }
+            if (want_mode) {
+                struct omni_settings s;
+                rc = omni_load_settings(d, &s);
+                if (rc != OMNI_OK) { print_rc("load settings", rc); omni_close(d); return 1; }
+                if (s.mode != OMNI_CUSTOM_MODE) {
+                    s.mode = OMNI_CUSTOM_MODE;
+                    s.custom_group = (uint8_t)group;
+                    rc = omni_save_settings_verified(d, &s);
+                    print_rc("switch to Customize (mode 20)", rc);
+                    if (rc != OMNI_OK) { omni_close(d); return 1; }
+                } else if (s.custom_group != (uint8_t)group) {
+                    s.custom_group = (uint8_t)group;
+                    rc = omni_save_settings_verified(d, &s);
+                    print_rc("select custom group", rc);
+                    if (rc != OMNI_OK) { omni_close(d); return 1; }
+                } else {
+                    printf("already in Customize, group %d\n", group);
+                }
+            }
+        } else if (dry && changed) {
+            printf("dry-run: %d key(s) changed in the buffer, nothing written\n", nsets);
+        }
+
+        if (do_read) {
+            printf("group %d (cmd 05 0x%03X, %u slots):\n", group,
+                   (unsigned)(OMNI_GROUP_OFF0 + group * OMNI_REMAP_PAGE), plen / 3);
+            omni_group_print(stdout, page, plen, &km);
+        }
     } else {
         fprintf(stderr, "unknown command '%s'\n", cmd);
         usage();

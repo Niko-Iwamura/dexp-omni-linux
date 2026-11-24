@@ -23,6 +23,12 @@ typedef struct App {
     uint8_t              ledidx[OMNI_MAX_KEYS];
     int                  have_ledidx;
     uint8_t              palette[OMNI_PALETTE_COUNT][3];
+    /* 320F:505B raw-RGB path: one 384-byte page (128 slots x 3) per group */
+    uint8_t              group_rgb[OMNI_GROUP_MAXLEN];
+    int                  have_group;
+    int                  group_shown;
+    uint8_t              paint_rgb[3];    /* colour painted with, raw-RGB mode */
+    int                  paint_raw;       /* 1 = kb_paint shows group_rgb */
     struct omni_settings settings;
     int                  have_settings;
     guint32              macro_events[GUI_MACRO_MAX][GUI_EVENTS_MAX];
@@ -44,6 +50,8 @@ typedef struct App {
     GtkWidget *fx_spin, *group_combo, *paint_combo;
     GtkWidget *palette_btns[OMNI_PALETTE_COUNT];
     GtkWidget *kb_paint;
+    GtkWidget *rgb_btn, *rgb_read_btn, *rgb_apply_btn;
+    GtkWidget *cust_vbox, *rgb_child, *pal_child, *kb_rgb;
 
     /* keys page */
     GtkWidget *kb_select;
@@ -77,6 +85,8 @@ int  app_slot_to_key(App *a, int slot);
 /* page builders */
 GtkWidget *build_device_page(App *a);
 GtkWidget *build_light_page(App *a);
+/* switch the custom per-key section between the raw-RGB and palette paths */
+void app_set_custom_path(App *a, int raw_rgb);
 GtkWidget *build_keys_page(App *a);
 GtkWidget *build_macro_page(App *a);
 GtkWidget *build_console_page(App *a);

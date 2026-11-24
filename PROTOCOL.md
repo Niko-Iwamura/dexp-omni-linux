@@ -266,7 +266,16 @@ verified write/restore cycle:
   (`omni_mode_names[20]`), with `CustomGroup` 0–2 selecting which page the
   keyboard lights.
 
-* Verified sequence (`perkey_write.py`): read page via cmd 0x0A → patch the
+* Implemented as `omni_read_group()`, `omni_write_group()`,
+  `omni_write_group_verified()`, `omni_group_set_slot()` and
+  `omni_group_print()` in `src/omni.c`; `omni-cli group` exposes them
+  (`--read`, `--save FILE`, `--from FILE`, `--set KEY=RRGGBB`, `--mode`).
+  The GUI builds both custom panels and shows the one matching the connected
+  keyboard (`app_set_custom_path()`), because pages are built before the device
+  is known; painting goes straight onto the keyboard diagram.
+
+* Verified sequence (`perkey_write.py` and `omni-cli group`): read the page →
+  patch the
   3 bytes → write via cmd 0x0B *or* cmd 0x06 → commit → read back. Painting
   D (slot 27) of group 0 `FFFFFF → FF0000` and back verified on both paths;
   the full page returned byte-identical afterwards. A proof of concept: the
