@@ -1,0 +1,15 @@
+# DEXP OMNI keyboard — USB 0C45:1007 (Sonix VS11K09A) or 320F:505B (Evision RGB Keyboard)
+# Grant desktop users access to the hidraw configuration interface.
+#
+# Install:
+#   sudo cp 60-dexp-omni.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload && sudo udevadm trigger
+#
+# "uaccess" works on systemd distros (Kubuntu, Ubuntu, Fedora...): it tags
+# the node so the currently logged-in user gets an ACL. The MODE line is a
+# fallback for other setups.
+
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0c45", ATTRS{idProduct}=="1007", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0c45", ATTRS{idProduct}=="1007", MODE="0660", GROUP="users"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="320f", ATTRS{idProduct}=="505b", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="320f", ATTRS{idProduct}=="505b", MODE="0660", GROUP="users"
