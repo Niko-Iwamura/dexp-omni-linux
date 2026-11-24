@@ -545,6 +545,31 @@ area is readable through cmd 0A. Event dwords alternate `xx 00 81 01` /
 stray input report interrupted the transfer).
 
 
+### 13.2 Writing the live assignment bank (cmd 09) on 320F:505B
+
+Verified on hardware (repeated runs, Nov 2026).
+
+- **Use cmd 09 for key assignments.** cmd 0A/0B pages 0-2 are the custom-colour
+  groups on this hardware (see above), so key assignments written there only
+  paint junk colours. The live bank is read with cmd 07 and written with cmd 09.
+- **Write the full 128-slot table, and keep the slots you do not edit.** Slots
+  with no entry in the reference key table (the knob/consumer slots `30 xx xx`,
+  M6-M8 `D0 A2 06..08`, and the two unused slots 71 and 79, which read back as
+  `20 00 00`) must be written back exactly as read. A table built from zeros and
+  filled in only for known keys sends `00 00 00` for those slots. Observed
+  result: the keyboard accepts the write, then after one or two applies blinks
+  white and drops the custom assignments. Starting from the last cmd 07 read and
+  overlaying only the edited keys fixes it. (That the firmware rejects `00 00 00`
+  is inferred from this behaviour, not from a documented check.)
+- **Slot/key mapping.** Slots that match no reference triple must stay unmapped.
+  Mapping them by identity (slot index = key index) makes e.g. the Volume Down
+  slot (87) overwrite key 87 (C) when the table is loaded, so the wrong data is
+  written back to the real key's slot. On this keyboard this affected T (slot 47,
+  M6), CapsLock (63, M8), C (87), App (111) and Left (113).
+- **Key names F13-F15.** Reference entries 13-15 are named F13-F15 but carry HID
+  usages 0x46-0x48 (PrintScreen, ScrollLock, Pause). The retail keyboard has no
+  such keys.
+
 ### 13.1 Where "0C45:1007 / Sonix VS11K09A" came from (correction)
 
 `DefaultData/Keyboard.json` in the Windows app is a *default profile
