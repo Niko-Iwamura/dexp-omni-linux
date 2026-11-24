@@ -79,8 +79,9 @@ Verified on **USB 320F:505B "Evision RGB Keyboard"** (the DEXP OMNI as sold
 today): framing, cmd 03/05/07/1B/0A, and per-key colour in a verified
 write/restore cycle. Custom per-key lighting **does** work on this ID, but
 differently than the palette path: no 0xFF palette report, no cmd 0x12 index
-table — instead a raw-RGB page per custom group (see PROTOCOL.md §5.2b and
-§13). `omni_supports_custom_light()` still returns 0 for this ID because the
+table — instead a raw-RGB page per custom group. Writes take effect on the
+LEDs immediately (no replug) and each slot is independent — confirmed by
+webcam, not just by read-back (see PROTOCOL.md §5.2b and §13). `omni_supports_custom_light()` still returns 0 for this ID because the
 CLI/GUI palette flow is the 0C45:1007 one; the raw-RGB path is
 `perkey_write.py` for now. Take a read-only snapshot before any write
 (`omni-cli dump`).

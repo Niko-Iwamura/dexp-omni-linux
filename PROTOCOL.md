@@ -283,6 +283,27 @@ verified write/restore cycle:
   WASD/arrows, `02 00 B2` PageUp) matching the Windows app's "Customize" /
   Group 1 screen.
 
+* **Read-back is not proof of output — check the LEDs.** A page can read back
+  byte-perfect while the user sees no change, so a verified write only proves
+  the *stored* bytes. Confirm any colour claim against the physical LEDs (a
+  webcam frame of the keyboard is enough). Two facts settled that way on the
+  320F:505B:
+  - **Writes take effect live, no replug, no re-select.** Painting group 0
+    slot 27 D `FFFFFF → FF0000` with mode already 20 changed the key's light
+    within about a second of `cmd 02`; restoring `FFFFFF` did the same.
+  - **Per-key colour is genuinely per-slot: no channel bleed.** Painting Esc
+    (slot 0) `FF0000 → 0000FF` turned Esc blue and left F1 (slot 8,
+    `FF7200`) orange, and vice versa. Esc is col 0 row 0 and F1 is col 1
+    row 0 (slot = col*8 + row), so they are not even in the same column; the
+    red glow that appears to spill from Esc onto the case is cap light
+    spill, not a second key lighting up.
+
+* Colour naming trap: the stored triple is literal RGB, so `FF7200` is
+  **orange** (hue 26.8°), not red — only `FF0000` (hue 0°) is red. `FFA800`
+  (hue 39.5°) is the yellower orange used for F10. Do not read the F-row as
+  "all reddish": it steps orange → yellow → green → blue → purple →
+  magenta across F1–F12.
+
 ### 5.3 Palette colour data
 
 13 entries × {R,G,B,scale}. The wire payload is the *scaled* value:
