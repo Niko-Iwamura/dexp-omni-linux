@@ -83,9 +83,21 @@ static void usage(void)
 "  snapshot FILE [--limit 0xNNNN]       read-only dump of keyboard memory (diff with tools/snapdiff.py)\n"
 "  keyids                               dump key-ID/live table (cmd 07)\n"
 "  ledidx                               dump per-LED palette table (cmd 1B)\n"
+"  assign [--read]                      dump the live key-assignment table (cmd 07)\n"
+"  assign --set KEY=ASSIGN [--set ...] [--dry-run]\n"
+"                                       rebind keys. On 320F:505B this writes the\n"
+"                                       keyboard's PERSISTENT key table (NVRAM bank 0,\n"
+"                                       cmd 06) and verifies it; unplug/re-plug to\n"
+"                                       activate (the map is loaded at power-on).\n"
+"                                       On other models it writes the live bank\n"
+"                                       (cmd 09, immediate).\n"
 "  remap --layer N --read               dump a remap layer page (cmd 0A)\n"
-"  remap --layer N --set KEY=ASSIGN [--set ...]\n"
-"                                       modify + write the page (cmd 0B)\n"
+"  remap --layer N --set KEY=ASSIGN [--set ...] [--dry-run] [--force]\n"
+"                                       modify + write a remap layer (cmd 0B).\n"
+"                                       On 320F:505B these pages are the lighting\n"
+"                                       groups (cmd 0B paints colours) - the tool\n"
+"                                       refuses unless --force is given; use\n"
+"                                       'assign' for key remaps instead.\n"
 "                                       ASSIGN: 'A', 'ctrl+a', 'M3', 'Media 0x1B',\n"
 "                                               '20 00 29', '0x200029', 'disabled'\n"
 "  group [--group 0-2] [--read]         dump a custom-group RGB page (320F:505B)\n"
@@ -99,6 +111,8 @@ static void usage(void)
 "Examples:\n"
 "  omni-cli lighting --mode 3 --brightness 4 --speed 2 --color FF6600 --dry-run\n"
 "  omni-cli profile save night && omni-cli profile apply night\n"
+"  omni-cli assign --set 6=PrintScreen        # remap F6 -> PrintScreen (persistent)\n"
+"  omni-cli assign --set 6=20 00 46 --dry-run\n"
 "  omni-cli remap --layer 1 --set 120=M5 --set 22=Esc\n"
 "  omni-cli group --read                    # dump group 0 per-key colours\n"
 "  omni-cli group --group 1 --set PageUp=0200B2 --set D=FF0000\n"
@@ -558,40 +572,60 @@ int main(int argc, char **argv)
         if (rc != OMNI_OK) { print_rc("LED table (cmd 1B)", rc); return 1; }
         printf("per-LED palette indices (slot-major):\n");
         dump_hex(tab, kc, 0);
-    } else if (!strcmp(cmd, "remap")) {
+    } else if (!strcmp(cmd, "remap") || !strcmp(cmd, "assign")) {
+        int live = !strcmp(cmd, "assign") ? 1 : 0;
         uint8_t info[34];
-        int layer = 0, do_read = 0;
+        int layer = 0, do_read = 0, dry = 0, force = 0;
         const char *sets[64]; int nsets = 0;
         for (int i = 2; i < argc; i++) {
             if (!strcmp(argv[i], "--layer") && i + 1 < argc) layer = atoi(argv[++i]);
             else if (!strcmp(argv[i], "--read")) do_read = 1;
+            else if (!strcmp(argv[i], "--live")) live = 1;
+            else if (!strcmp(argv[i], "--dry-run")) dry = 1;
+            else if (!strcmp(argv[i], "--force")) force = 1;
             else if (!strcmp(argv[i], "--set") && i + 1 < argc && nsets < 64) sets[nsets++] = argv[++i];
+            else { fprintf(stderr, "remap: unknown or incomplete option %s\n", argv[i]); return 1; }
         }
         rc = omni_read_info(d, info);
-        if (rc != OMNI_OK) { print_rc("device info", rc); return 1; }
+        if (rc != OMNI_OK) { print_rc("device info", rc); omni_close(d); return 1; }
         unsigned kc = info[5];
-        uint8_t keyids[512];
+        if (kc > OMNI_MAX_KEYS) kc = OMNI_MAX_KEYS;
+        int group_rgb = omni_supports_group_rgb(d);
+
+        /* On 320F:505B the cmd 0A/0B "remap layers" are the three custom
+         * colour-group pages, not key assignments (PROTOCOL.md 5.2b / 13.2).
+         * Writing assignments there paints junk colours into the lighting
+         * table - refuse unless the caller insists via --force. */
+        if (!live && group_rgb && nsets > 0 && !force) {
+            fprintf(stderr,
+                "remap: this keyboard's cmd 0A/0B pages are lighting groups, not key\n"
+                "assignments. Use `omni-cli assign --set ...` (writes the persistent\n"
+                "key table), or pass --force to write cmd 0B anyway (paints colours,\n"
+                "damages lighting).\n");
+            omni_close(d);
+            return 1;
+        }
+
+        /* Assignments live in the cmd 07 / cmd 09 table. The cmd 0A page is
+         * only meaningful on hardware where it really is a remap layer. */
+        uint8_t table[OMNI_REMAP_PAGE];
+        memset(table, 0, sizeof table);
         rc = omni_begin(d);
-        if (rc == OMNI_OK) rc = omni_read_keyids(d, keyids, (uint16_t)(kc * 3));
+        if (rc == OMNI_OK) rc = omni_read_keyids(d, table, (uint16_t)(kc * 3));
         if (rc == OMNI_OK) rc = omni_commit(d);
-        if (rc != OMNI_OK) { print_rc("key-ID table (cmd 07)", rc); return 1; }
+        if (rc != OMNI_OK) { print_rc("key-assignment table (cmd 07)", rc); omni_close(d); return 1; }
 
         struct omni_keymap km;
-        omni_build_keymap(keyids, (uint16_t)kc, &km);
+        omni_build_keymap(table, (uint16_t)kc, &km);
 
-        uint8_t page[OMNI_REMAP_PAGE];
-        rc = omni_read_remap(d, (uint8_t)layer, page, (uint16_t)(kc * 3));
-        if (rc != OMNI_OK) { print_rc("read remap page (cmd 0A)", rc); return 1; }
+        /* Only read the cmd 0A layer page when it is a genuine remap layer. */
+        if (!live && !group_rgb) {
+            rc = omni_read_remap(d, (uint8_t)layer, table, (uint16_t)(kc * 3));
+            if (rc != OMNI_OK) { print_rc("read remap page (cmd 0A)", rc); omni_close(d); return 1; }
+            omni_build_keymap(table, (uint16_t)kc, &km);
+        }
 
         if (nsets > 0) {
-            /* apply KEY=ASSIGN edits, then write back */
-            uint8_t assign[OMNI_KEYREF_COUNT][3];
-            memset(assign, 0, sizeof assign);
-            for (int k = 0; k < OMNI_KEYREF_COUNT && k < (int)kc; k++) {
-                int slot = km.key_to_slot[k];
-                if (slot != 0xFF && slot * 3 + 2 < OMNI_REMAP_PAGE)
-                    memcpy(assign[k], page + slot * 3, 3);
-            }
             for (int i = 0; i < nsets; i++) {
                 char buf[128];
                 snprintf(buf, sizeof buf, "%s", sets[i]);
@@ -599,32 +633,76 @@ int main(int argc, char **argv)
                 if (!eq) { fprintf(stderr, "bad --set '%s' (need KEY=ASSIGN)\n", sets[i]); continue; }
                 *eq = 0;
                 int key = atoi(buf);
+                if (key < 0 || key >= OMNI_KEYREF_COUNT) {
+                    fprintf(stderr, "bad --set '%s': key index must be 0-%d\n",
+                            sets[i], OMNI_KEYREF_COUNT - 1);
+                    continue;
+                }
                 uint8_t a[3];
                 if (omni_assignment_parse(eq + 1, a) != OMNI_OK) {
                     fprintf(stderr, "bad assignment '%s': %s\n", eq + 1, omni_last_error());
                     continue;
                 }
-                memcpy(assign[key], a, 3);
-                printf("set key %d -> %02x %02x %02x\n", key, a[0], a[1], a[2]);
+                int slot = km.key_to_slot[key];
+                if (slot == 0xFF) {
+                    fprintf(stderr, "key %d (%s) has no slot on this keyboard\n", key,
+                            (key < OMNI_KEYREF_COUNT && omni_keyref_name[key])
+                                ? omni_keyref_name[key] : "?");
+                    continue;
+                }
+                memcpy(table + slot * 3, a, 3);  /* overlay: keep every other slot */
+                printf("key %d %-10s slot %3d -> %02x %02x %02x\n", key,
+                       (key < OMNI_KEYREF_COUNT && omni_keyref_name[key])
+                           ? omni_keyref_name[key] : "?",
+                       slot, a[0], a[1], a[2]);
             }
-            unsigned quirks = info[0] == 0x14 ? OMNI_QUIRK_SWAP_ENTER_BACKSLASH : 0;
-            omni_build_remap_page(assign, (uint16_t)kc, &km, page, quirks);
-            rc = omni_begin(d);
-            if (rc == OMNI_OK) rc = omni_write_remap(d, (uint8_t)layer, page, (uint16_t)(kc * 3));
-            if (rc == OMNI_OK) rc = omni_commit(d);
-            print_rc("write remap page (cmd 0B)", rc);
-            if (rc != OMNI_OK) return 1;
+            if (dry) {
+                printf("dry-run: would write %u bytes to the %s\n", kc * 3,
+                       (group_rgb && !(force && !live))
+                           ? "persistent key table (NVRAM 0x0C0, cmd 06)"
+                           : (live ? "live assignment bank (cmd 09)"
+                                   : "remap layer page (cmd 0B)"));
+            } else if (group_rgb && !(force && !live)) {
+                /* 320F:505B: the real, persistent key table; the running map is
+                 * loaded from it at power-on (PROTOCOL.md 13.3). */
+                uint8_t back[OMNI_REMAP_PAGE];
+                rc = omni_write_assign_bank(d, 0, table, (uint16_t)(kc * 3), back);
+                print_rc("write persistent key table (NVRAM 0x0C0, cmd 06)", rc);
+                if (rc == OMNI_OK) {
+                    printf("saved and verified. This keyboard loads its key map at "
+                           "power-on:\nunplug and re-plug it to activate.\n");
+                } else {
+                    omni_close(d);
+                    return 1;
+                }
+            } else if (live) {
+                rc = omni_begin(d);
+                if (rc == OMNI_OK)
+                    rc = omni_write_assignments(d, table, (uint16_t)(kc * 3), 0);
+                if (rc == OMNI_OK) rc = omni_commit(d);
+                print_rc("write live assignment bank (cmd 09)", rc);
+                if (rc != OMNI_OK) { omni_close(d); return 1; }
+            } else {
+                rc = omni_begin(d);
+                if (rc == OMNI_OK)
+                    rc = omni_write_remap(d, (uint8_t)layer, table, (uint16_t)(kc * 3));
+                if (rc == OMNI_OK) rc = omni_commit(d);
+                print_rc("write remap page (cmd 0B)", rc);
+                if (rc != OMNI_OK) { omni_close(d); return 1; }
+            }
         }
         /* dump */
         for (unsigned s = 0; s < kc; s++) {
             char txt[64];
-            omni_assignment_text(page + s * 3, txt, sizeof txt);
+            omni_assignment_text(table + s * 3, txt, sizeof txt);
             int key = km.slot_to_key[s];
             printf("slot %3u (key %3d %-10s): %02x %02x %02x   %s\n", s,
                    key, (key < OMNI_KEYREF_COUNT && omni_keyref_name[key]) ? omni_keyref_name[key] : "?",
-                   page[s*3], page[s*3+1], page[s*3+2], txt);
+                   table[s*3], table[s*3+1], table[s*3+2], txt);
         }
         (void)do_read;
+        omni_close(d);
+        return 0;
     } else if (!strcmp(cmd, "group")) {
         /* custom-group RGB pages, 320F:505B only (PROTOCOL.md 5.2b) */
         uint8_t info[34];

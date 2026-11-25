@@ -571,6 +571,49 @@ int omni_write_remap(omni_dev *d, uint8_t layer, const uint8_t *page, uint16_t l
 }
 
 /* ------------------------------------------------------------------ */
+/* Persistent key-assignment banks (settings NVRAM, cmd 05/06)         */
+
+int omni_read_assign_bank(omni_dev *d, uint8_t bank, uint8_t *table, uint16_t len)
+{
+    if (!d || d->fd < 0 || !table) return OMNI_ERR;
+    if (bank >= OMNI_ASSIGN_NBANKS) return fail("assignment bank %u out of range", bank);
+    return chunked_read(d, 0x05, table, len,
+                        (uint16_t)(OMNI_ASSIGN_BANK0 + bank * OMNI_REMAP_PAGE));
+}
+
+int omni_write_assign_bank(omni_dev *d, uint8_t bank, const uint8_t *table,
+                           uint16_t len, uint8_t *readback)
+{
+    uint16_t off;
+    int rc;
+
+    if (!d || d->fd < 0 || !table) return OMNI_ERR;
+    if (bank >= OMNI_ASSIGN_NBANKS) return fail("assignment bank %u out of range", bank);
+
+    off = (uint16_t)(OMNI_ASSIGN_BANK0 + bank * OMNI_REMAP_PAGE);
+    if ((rc = omni_begin(d)) != OMNI_OK) return rc;
+    if ((rc = chunked_write(d, 0x06, table, len, off, 0)) != OMNI_OK) {
+        omni_commit(d);
+        return rc;
+    }
+    if ((rc = omni_commit(d)) != OMNI_OK) return rc;
+
+    /* A write status of OK only proves the frame was accepted (PROTOCOL.md 13.3).
+     * Read the bank back in a fresh session so a silent no-op is not reported as
+     * success. This does NOT prove the running key map changed: the device serves
+     * that from its power-on image. */
+    if (readback) {
+        if ((rc = omni_begin(d)) != OMNI_OK) return rc;
+        rc = chunked_read(d, 0x05, readback, len, off);
+        omni_commit(d);
+        if (rc != OMNI_OK) return rc;
+        if (memcmp(readback, table, len) != 0)
+            return fail("assignment bank %u did not store what was written", bank);
+    }
+    return OMNI_OK;
+}
+
+/* ------------------------------------------------------------------ */
 /* Custom-group RGB pages (320F:505B, PROTOCOL.md 5.2b)                */
 
 int omni_supports_group_rgb(const omni_dev *d)

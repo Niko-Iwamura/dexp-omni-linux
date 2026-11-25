@@ -570,6 +570,35 @@ Verified on hardware (repeated runs, Nov 2026).
   usages 0x46-0x48 (PrintScreen, ScrollLock, Pause). The retail keyboard has no
   such keys.
 
+### 13.3 cmd 09 is a silent no-op on 320F:505B - assignments live in NVRAM
+
+Verified on hardware (Nov 2026), correcting §13.2's "use cmd 09" advice.
+
+- **cmd 09 returns OK and does write** - but into **settings NVRAM bank 0 at
+  0x0C0** (the same 3-bytes/slot table the cmd 0A/0B pages alias for the custom
+  colour groups), **not** into wherever the running key map is served from.
+  A sentinel write (set slot 20, read back) showed `0x0C0[20]` change while the
+  cmd-07 live table stayed put.
+- **cmd 07 does not mirror the NVRAM banks.** The running map is read from an
+  internal copy that is loaded **once at power-on**; no command tried here
+  (settings-record rewrite, mode toggle, `cmd 02`+`cmd 01`, `cmd 1C` pulse,
+  `cmd AA` probe) makes the device re-read NVRAM while it is up.
+- **The assignment table layout in NVRAM** is three banks, `0x200` apart, at
+  **0x0C0 / 0x2C0 / 0x4C0** = 128 slots x 3 bytes, same slot order as cmd 07.
+  Bank 0 (`0x0C0`) is the one cmd 09 writes; the Windows app's own remap lands
+  there too.
+- **Consequence.** A remap written to NVRAM is accepted and persists, but the
+  LED/key behaviour only changes **after the keyboard is unplugged and
+  re-plugged**. This matches the observed symptom: a remap "acts once, blinks
+  white and reverts" - the running image was loaded before the write.
+- **Recommended write sequence** (implemented in `omni_write_assign_bank()` and
+  both the CLI `assign` and the GUI's "Apply to device" button):
+  `cmd 01` -> `cmd 06` (NVRAM `0x0C0`, full 384 bytes, overlay only the edited
+  slots) -> `cmd 02`, then a fresh `cmd 01`/`cmd 05` read-back to verify the
+  store. Report success as "saved; re-plug to activate", never as "applied".
+- **cmd 0B never helps here.** Its pages are the lighting groups, so using it
+  for a key remap paints assignment bytes into the colour table (see §13.2).
+
 ### 13.1 Where "0C45:1007 / Sonix VS11K09A" came from (correction)
 
 `DefaultData/Keyboard.json` in the Windows app is a *default profile

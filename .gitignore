@@ -19,3 +19,6 @@ __pycache__/
 
 # raw protocol dumps are kept in docs/dumps on purpose; scratch here
 /perkey_write.py.orig
+
+# openclaw session exports
+/.openclaw/

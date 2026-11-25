@@ -459,19 +459,39 @@ static void on_write_layer(App *a, GtkWidget *btn)
 {
     (void)btn;
     uint8_t page[OMNI_REMAP_PAGE];
+    uint8_t back[OMNI_REMAP_PAGE];
     uint16_t kc;
     int layer, rc;
     if (!app_dev_check(a)) return;
-    if (omni_supports_group_rgb(a->dev)) {
-        /* 320F:505B: cmd 0A/0B pages 0-2 are the custom-colour groups, not
-         * key assignments (PROTOCOL.md 5.2b) - writing keys there paints junk */
-        app_status(a, "This keyboard's cmd 0B pages are lighting groups; use 'Apply to live bank (cmd 09)'.");
-        return;
-    }
-    layer = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(a->layer_spin));
+
     kc = a->info[5];
     if (kc > OMNI_MAX_KEYS) kc = OMNI_MAX_KEYS;
 
+    if (omni_supports_group_rgb(a->dev)) {
+        /* 320F:505B: cmd 0A/0B pages 0-2 are the custom-colour groups, not key
+         * assignments (PROTOCOL.md 5.2b/13.2), and the running key map is not
+         * served from them at all. Write the keyboard's real persistent key
+         * table (settings NVRAM bank 0, cmd 06) instead. */
+        memset(page, 0, sizeof page);
+        memcpy(page, a->keyids, (size_t)kc * 3);
+        if (omni_overlay_remap_page(a->assignment, kc, &a->km, page, a->quirks) != OMNI_OK) {
+            app_status(a, "cannot build assignment table"); return;
+        }
+        rc = omni_write_assign_bank(a->dev, 0, page, (uint16_t)(kc * 3), back);
+        if (rc != OMNI_OK) {
+            app_status(a, "key table write failed: %s", omni_last_error());
+            app_log(a, "persistent key table write failed: %s", omni_last_error());
+            return;
+        }
+        memcpy(a->keyids, back, (size_t)kc * 3);
+        app_log(a, "persistent key table (NVRAM 0x0C0) written + verified, %u slots", kc);
+        app_status(a, "Key table saved and verified. Unplug and re-plug the keyboard "
+                      "to activate — this keyboard loads its key map at power-on.");
+        kb_view_refresh(a->kb_select);
+        return;
+    }
+
+    layer = gtk_spin_button_get_value_as_int(GTK_SPIN_BUTTON(a->layer_spin));
     if (omni_build_remap_page(a->assignment, kc, &a->km, page, a->quirks) != OMNI_OK) {
         app_status(a, "cannot build remap page"); return;
     }
@@ -500,6 +520,26 @@ static void on_apply_live(App *a, GtkWidget *btn)
     if (omni_overlay_remap_page(a->assignment, kc, &a->km, page, a->quirks) != OMNI_OK) {
         app_status(a, "cannot build assignment table"); return;
     }
+
+    if (omni_supports_group_rgb(a->dev)) {
+        /* cmd 09 (the "second bank") is accepted on 320F:505B but the running
+         * map does not follow it; the persistent table the firmware loads at
+         * power-on lives in NVRAM bank 0 (PROTOCOL.md 13.3). */
+        uint8_t back[OMNI_REMAP_PAGE];
+        rc = omni_write_assign_bank(a->dev, 0, page, (uint16_t)(kc * 3), back);
+        if (rc != OMNI_OK) {
+            app_status(a, "key table write failed: %s", omni_last_error());
+            app_log(a, "persistent key table write failed: %s", omni_last_error());
+            return;
+        }
+        memcpy(a->keyids, back, (size_t)kc * 3);
+        app_log(a, "persistent key table (NVRAM 0x0C0) written + verified, %u slots", kc);
+        app_status(a, "Assignments saved and verified. Unplug and re-plug the keyboard "
+                      "to activate — this keyboard loads its key map at power-on.");
+        kb_view_refresh(a->kb_select);
+        return;
+    }
+
     rc = omni_begin(a->dev);
     if (rc == OMNI_OK) rc = omni_write_assignments(a->dev, page, (uint16_t)(kc * 3), 0);
     if (rc == OMNI_OK) rc = omni_commit(a->dev);
@@ -636,15 +676,18 @@ GtkWidget *build_keys_page(App *a)
     btn = gtk_button_new_with_label("Write layer (cmd 0B)");
     g_signal_connect_swapped(btn, "clicked", G_CALLBACK(on_write_layer), a);
     gtk_box_pack_start(GTK_BOX(hbox), btn, FALSE, FALSE, 0);
-    btn = gtk_button_new_with_label("Apply to live bank (cmd 09)");
+    btn = gtk_button_new_with_label("Apply to device (persistent)");
     g_signal_connect_swapped(btn, "clicked", G_CALLBACK(on_apply_live), a);
     gtk_box_pack_start(GTK_BOX(hbox), btn, FALSE, FALSE, 0);
 
     lbl = gtk_label_new(NULL);
     gtk_label_set_markup(GTK_LABEL(lbl),
-        "<i>cmd 09 changes the active bank immediately; cmd 0B writes a stored "
-        "layer page (layer*0x200). Key↔slot translation uses the cmd-07 table; "
-        "model 0x14 applies the Enter/Backslash slot-swap on writes.</i>");
+        "<i>320F:505B: 'Apply to device' writes the keyboard's persistent key table "
+        "(settings NVRAM bank 0, cmd 06) and verifies it by read-back. This keyboard "
+        "loads its key map at power-on, so unplug/re-plug to activate. "
+        "'Write layer (cmd 0B)' is the stored-layer path for other models. "
+        "Key↔slot translation uses the cmd-07 table; model 0x14 applies the "
+        "Enter/Backslash slot-swap on writes.</i>");
     gtk_box_pack_start(GTK_BOX(box), lbl, FALSE, FALSE, 0);
 
     a->selected_key = -1;

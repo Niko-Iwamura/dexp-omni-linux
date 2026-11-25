@@ -91,6 +91,18 @@ int omni_read_keyids(omni_dev *d, uint8_t *table, uint16_t len);
 /* live assignment bank (cmd 09) and second bank (cmd 27): keycount*3 bytes */
 int omni_write_assignments(omni_dev *d, const uint8_t *table, uint16_t len, uint8_t bank);
 
+/* Persistent key-assignment banks in settings NVRAM (cmd 05/06), 0x200 apart.
+ * On 320F:505B the running key map is NOT served from these while the device is
+ * up: cmd 09 writes bank 0 (0x0C0) and cmd 07 keeps returning the map that was
+ * loaded at power-on. A written bank therefore takes effect after the keyboard
+ * is re-plugged, not immediately (PROTOCOL.md 13.3). */
+#define OMNI_ASSIGN_NBANKS 3u
+#define OMNI_ASSIGN_BANK0  0x00C0u
+
+int omni_read_assign_bank(omni_dev *d, uint8_t bank, uint8_t *table, uint16_t len);
+int omni_write_assign_bank(omni_dev *d, uint8_t bank, const uint8_t *table,
+                           uint16_t len, uint8_t *readback);
+
 /* remap layer page (cmd 0A/0B): 512-byte page at layer*0x200 */
 int omni_read_remap (omni_dev *d, uint8_t layer, uint8_t *page, uint16_t len);
 int omni_write_remap(omni_dev *d, uint8_t layer, const uint8_t *page, uint16_t len);
